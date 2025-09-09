@@ -45,6 +45,7 @@ export class RAGService {
       try {
         parsed = JSON.parse(answerJson);
       } catch {
+        // If parsing fails, treat the whole string as the answer
         parsed = { answer: answerJson, sources: [] };
       }
 
@@ -82,6 +83,7 @@ export class RAGService {
       try {
         return JSON.parse(json);
       } catch {
+        // If parsing fails, treat the whole string as the reason
         return { why: json, evidence: [] };
       }
     } catch (error) {

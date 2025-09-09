@@ -7,130 +7,102 @@ import { config } from './config/environment.js';
 
 const rag = new RAGService();
 
+// Helper to send JSON responses
 function sendJSON(res, data, status = 200) {
   res.writeHead(status, {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': '*', // Allow any origin
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type'
   });
   res.end(JSON.stringify(data));
 }
 
+// Helper to send error responses
 function sendError(res, message, status = 500) {
   sendJSON(res, { error: message }, status);
 }
 
-async function handleChatRequest(req, res) {
-  let body = '';
-  req.on('data', chunk => { body += chunk.toString(); });
-  
-  req.on('end', async () => {
-    try {
-      const { question, role, filter } = JSON.parse(body);
-      
-      if (!question || !role) {
-        return sendError(res, 'question and role are required', 400);
+// Helper to parse JSON body from a request
+function getBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => { body += chunk.toString(); });
+    req.on('end', () => {
+      if (body === '') return resolve({});
+      try {
+        resolve(JSON.parse(body));
+      } catch (e) {
+        reject(new Error('Invalid JSON'));
       }
-
-      const response = await rag.ask({ question, role, filter });
-      sendJSON(res, response);
-    } catch (error) {
-      console.error('Chat error:', error);
-      sendError(res, 'Internal server error');
-    }
+    });
+    req.on('error', err => reject(err));
   });
 }
 
-async function handleWhyRequest(req, res) {
-  let body = '';
-  req.on('data', chunk => { body += chunk.toString(); });
-  
-  req.on('end', async () => {
-    try {
-      const { question, role, docs } = JSON.parse(body);
-      
-      if (!question || !role || !docs) {
-        return sendError(res, 'question, role, and docs are required', 400);
-      }
-
-      const response = await rag.why({ question, role, docs });
-      sendJSON(res, response);
-    } catch (error) {
-      console.error('Why error:', error);
-      sendError(res, 'Internal server error');
-    }
-  });
-}
-
-async function handleBriefingRequest(req, res) {
-  const urlParts = url.parse(req.url, true);
-  const { role } = urlParts.query;
-  
-  if (!role) {
-    return sendError(res, 'role parameter is required', 400);
-  }
-
-  try {
-    const briefing = await makeBriefing({ role });
-    sendJSON(res, briefing);
-  } catch (error) {
-    console.error('Briefing error:', error);
-    sendError(res, 'Internal server error');
-  }
-}
-
-async function handleAlertsRequest(req, res) {
-  const urlParts = url.parse(req.url, true);
-  const { role = 'Director' } = urlParts.query;
-  
-  try {
-    const alerts = await scanPredictiveRisks({ role });
-    sendJSON(res, alerts);
-  } catch (error) {
-    console.error('Alerts error:', error);
-    sendError(res, 'Internal server error');
-  }
-}
-
-const server = http.createServer((req, res) => {
+// Main server logic
+const server = http.createServer(async (req, res) => {
   const urlParts = url.parse(req.url, true);
   const pathname = urlParts.pathname;
 
-  // Handle CORS preflight
+  // Handle CORS preflight for all routes
   if (req.method === 'OPTIONS') {
-    res.writeHead(200, {
-      'Access-Control-Allow-Origin': '*',
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*', // Allow any origin
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type'
     });
     return res.end();
   }
 
-  // Route handlers
-  if (pathname === '/api/chat' && req.method === 'POST') {
-    return handleChatRequest(req, res);
-  }
-  
-  if (pathname === '/api/why' && req.method === 'POST') {
-    return handleWhyRequest(req, res);
-  }
-  
-  if (pathname === '/api/briefings' && req.method === 'GET') {
-    return handleBriefingRequest(req, res);
-  }
-  
-  if (pathname === '/api/alerts' && req.method === 'GET') {
-    return handleAlertsRequest(req, res);
-  }
+  try {
+    // Route handlers
+    if (pathname === '/api/chat' && req.method === 'POST') {
+      const { question, role, filter } = await getBody(req);
+      if (!question || !role) {
+        return sendError(res, 'question and role are required', 400);
+      }
+      const response = await rag.ask({ question, role, filter });
+      return sendJSON(res, response);
+    }
 
-  // Health check
-  if (pathname === '/health') {
-    return sendJSON(res, { status: 'ok', timestamp: new Date().toISOString() });
-  }
+    if (pathname === '/api/why' && req.method === 'POST') {
+      const { question, role, docs } = await getBody(req);
+      if (!question || !role || !docs) {
+        return sendError(res, 'question, role, and docs are required', 400);
+      }
+      const response = await rag.why({ question, role, docs });
+      return sendJSON(res, response);
+    }
 
-  // 404
-  sendError(res, 'Not found', 404);
+    if (pathname === '/api/briefings' && req.method === 'GET') {
+      const { role } = urlParts.query;
+      if (!role) return sendError(res, 'role parameter is required', 400);
+      const briefing = await makeBriefing({ role });
+      return sendJSON(res, briefing);
+    }
+
+    if (pathname === '/api/alerts' && req.method === 'GET') {
+      const { role = 'Director' } = urlParts.query;
+      const alerts = await scanPredictiveRisks({ role });
+      return sendJSON(res, alerts);
+    }
+
+    if (pathname === '/health') {
+      return sendJSON(res, { status: 'ok', timestamp: new Date().toISOString() });
+    }
+
+    // If no route matched, send 404
+    sendError(res, 'Not found', 404);
+
+  } catch (error) {
+    console.error('Unhandled error:', error);
+    if (error.message === 'Invalid JSON') {
+      sendError(res, 'Invalid JSON in request body', 400);
+    } else {
+      sendError(res, 'Internal server error');
+    }
+  }
 });
 
 const PORT = config.port;

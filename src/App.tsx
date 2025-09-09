@@ -23,21 +23,34 @@ interface LastResult {
   question: string;
 }
 
+const INITIAL_MESSAGE: Message = {
+  id: '1',
+  from: 'ai',
+  text: 'Hello! I\'m Saarthi, your KMRL document assistant. I can help you find information based on your role. Ask me anything about policies, procedures, maintenance, or operations.',
+  timestamp: new Date()
+};
+
 function App() {
   const [selectedRole, setSelectedRole] = useState<keyof typeof ROLES>('Director');
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      from: 'ai',
-      text: 'Hello! I\'m Saarthi, your KMRL document assistant. I can help you find information based on your role. Ask me anything about policies, procedures, maintenance, or operations.',
-      timestamp: new Date()
-    }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const [question, setQuestion] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [lastResult, setLastResult] = useState<LastResult | null>(null);
   const [showBriefings, setShowBriefings] = useState(false);
   const [briefings, setBriefings] = useState<any>(null);
+
+  const resetChat = () => {
+    setMessages([INITIAL_MESSAGE]);
+    setLastResult(null);
+    setQuestion('');
+  };
+
+  const handleRoleChange = (role: keyof typeof ROLES) => {
+    if (role !== selectedRole) {
+      setSelectedRole(role);
+      resetChat();
+    }
+  };
 
   const askQuestion = async () => {
     if (!question.trim() || isLoading) return;
@@ -63,6 +76,10 @@ function App() {
           role: selectedRole
         })
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
       const data = await response.json();
       
@@ -109,6 +126,10 @@ function App() {
         })
       });
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const data = await response.json();
       
       const whyMessage: Message = {
@@ -131,6 +152,9 @@ function App() {
     setIsLoading(true);
     try {
       const response = await fetch(`/api/briefings?role=${selectedRole}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const data = await response.json();
       setBriefings(data);
       setShowBriefings(true);
@@ -159,7 +183,7 @@ function App() {
             {Object.entries(ROLES).map(([role, config]) => (
               <button
                 key={role}
-                onClick={() => setSelectedRole(role as keyof typeof ROLES)}
+                onClick={() => handleRoleChange(role as keyof typeof ROLES)}
                 className={`w-full p-3 rounded-lg text-left transition-all duration-200 hover:scale-105 ${
                   selectedRole === role
                     ? `${config.color} shadow-md border-2 border-current`
