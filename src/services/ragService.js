@@ -39,25 +39,14 @@ export class RAGService {
 
       // Generate context and get answer
       const context = combineDocuments(docs);
-      const answerJson = await this.answerChain.invoke({ context, question });
+      const answer = await this.answerChain.invoke({ context, question });
       
-      let parsed;
-      try {
-        parsed = JSON.parse(answerJson);
-      } catch {
-        // If parsing fails, treat the whole string as the answer
-        parsed = { answer: answerJson, sources: [] };
-      }
+      const sources = docs.slice(0, Math.min(k, 3)).map(d => ({
+        source: d.metadata?.source ?? 'unknown',
+        page: d.metadata?.page ?? null
+      }));
 
-      // Attach top sources if LLM didn't provide them
-      if (!parsed.sources?.length && docs.length) {
-        parsed.sources = docs.slice(0, Math.min(k, 3)).map(d => ({
-          source: d.metadata?.source ?? 'unknown',
-          page: d.metadata?.page ?? null
-        }));
-      }
-
-      return { ...parsed, retrieved: docs };
+      return { answer, sources, retrieved: docs };
     } catch (error) {
       console.error('RAGService.ask error:', error);
       return {
@@ -78,14 +67,17 @@ export class RAGService {
         `(${d.metadata?.source || 'unknown'} p.${d.metadata?.page || 'N/A'}) :: ${d.pageContent.slice(0, 300)}...`
       ).join('\n---\n');
 
-      const json = await this.whyChain.invoke({ question, snippets });
-      
-      try {
-        return JSON.parse(json);
-      } catch {
-        // If parsing fails, treat the whole string as the reason
-        return { why: json, evidence: [] };
-      }
+      // Get the explanation from the LLM
+      const explanation = await this.whyChain.invoke({ question, snippets });
+
+      // Extract evidence from the original documents
+      const evidence = docs.map(d => ({
+        source: d.metadata?.source ?? 'unknown',
+        page: d.metadata?.page ?? null
+      }));
+
+      return { why: explanation, evidence: evidence };
+
     } catch (error) {
       console.error('RAGService.why error:', error);
       return { why: "Error generating explanation.", evidence: [] };

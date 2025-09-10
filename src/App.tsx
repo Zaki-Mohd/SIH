@@ -135,14 +135,20 @@ function App() {
       const whyMessage: Message = {
         id: Date.now().toString(),
         from: 'ai',
-        text: `**Why this answer:** ${data.why}`,
-        sources: data.evidence || [],
+        text: data.why,
         timestamp: new Date()
       };
 
       setMessages(prev => [...prev, whyMessage]);
     } catch (error) {
       console.error('Error getting explanation:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        from: 'ai',
+        text: 'I encountered an error getting the explanation. Please try again.',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
