@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { MessageCircle, User, FileText, AlertCircle, HelpCircle, Send, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { MessageCircle, User, FileText, AlertCircle, HelpCircle, Send, Loader2, Mic, StopCircle } from 'lucide-react';
 
 // Role configuration with avatars and colors
 const ROLES = {
@@ -30,6 +30,14 @@ const INITIAL_MESSAGE: Message = {
   timestamp: new Date()
 };
 
+// Speech Recognition setup
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const recognition = SpeechRecognition ? new SpeechRecognition() : null;
+if (recognition) {
+  recognition.continuous = true;
+  recognition.interimResults = true;
+}
+
 function App() {
   const [selectedRole, setSelectedRole] = useState<keyof typeof ROLES>('Director');
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
@@ -38,11 +46,69 @@ function App() {
   const [lastResult, setLastResult] = useState<LastResult | null>(null);
   const [showBriefings, setShowBriefings] = useState(false);
   const [briefings, setBriefings] = useState<any>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  useEffect(() => {
+    const loadVoices = () => {
+      const availableVoices = window.speechSynthesis.getVoices();
+      if (availableVoices.length > 0) {
+        console.log('Available voices:', availableVoices);
+        setVoices(availableVoices);
+      }
+    };
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    loadVoices(); // Initial call
+  }, []);
+
+  const speak = (text: string) => {
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+    }
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+
+    // Simple language detection
+    let lang = 'en-US';
+    if (/[\u0C00-\u0C7F]/.test(text)) { // Telugu
+      lang = 'te-IN';
+    } else if (/[\u0C80-\u0CFF]/.test(text)) { // Kannada
+      lang = 'kn-IN';
+    }
+
+    // Voice selection
+    let selectedVoice: SpeechSynthesisVoice | null = null;
+    if (lang === 'te-IN') {
+      selectedVoice = voices.find(voice => voice.lang === 'te-IN') || null;
+    } else if (lang === 'kn-IN') {
+      selectedVoice = voices.find(voice => voice.lang === 'kn-IN') || null;
+    } else {
+      // Prefer a female voice for English
+      selectedVoice = voices.find(voice => voice.lang.startsWith('en') && voice.name.includes('Female')) || voices.find(voice => voice.lang.startsWith('en')) || null;
+    }
+
+    console.log('Detected language:', lang, 'Selected voice:', selectedVoice);
+
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+    }
+    utterance.lang = lang;
+    
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utteranceRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  };
 
   const resetChat = () => {
     setMessages([INITIAL_MESSAGE]);
     setLastResult(null);
     setQuestion('');
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+    }
   };
 
   const handleRoleChange = (role: keyof typeof ROLES) => {
@@ -52,27 +118,29 @@ function App() {
     }
   };
 
-  const askQuestion = async () => {
-    if (!question.trim() || isLoading) return;
+  const askQuestion = async (text?: string) => {
+    const query = text || question;
+    if (!query.trim() || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       from: 'user',
-      text: question,
+      text: query,
       timestamp: new Date()
     };
 
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
-    const currentQuestion = question;
-    setQuestion('');
+    if (!text) {
+      setQuestion('');
+    }
 
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          question: currentQuestion,
+          question: query,
           role: selectedRole
         })
       });
@@ -85,7 +153,7 @@ function App() {
       
       setLastResult({
         retrieved: data.retrieved || [],
-        question: currentQuestion
+        question: query
       });
 
       const aiMessage: Message = {
@@ -97,15 +165,18 @@ function App() {
       };
 
       setMessages(prev => [...prev, aiMessage]);
+      speak(data.answer);
     } catch (error) {
       console.error('Error asking question:', error);
+      const errorText = 'I encountered an error processing your question. Please try again.';
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         from: 'ai',
-        text: 'I encountered an error processing your question. Please try again.',
+        text: errorText,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
+      speak(errorText);
     } finally {
       setIsLoading(false);
     }
@@ -140,15 +211,18 @@ function App() {
       };
 
       setMessages(prev => [...prev, whyMessage]);
+      speak(data.why);
     } catch (error) {
       console.error('Error getting explanation:', error);
+      const errorText = 'I encountered an error getting the explanation. Please try again.';
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         from: 'ai',
-        text: 'I encountered an error getting the explanation. Please try again.',
+        text: errorText,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
+      speak(errorText);
     } finally {
       setIsLoading(false);
     }
@@ -170,6 +244,48 @@ function App() {
       setIsLoading(false);
     }
   };
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      recognition?.stop();
+    } else {
+      if (isSpeaking) {
+        window.speechSynthesis.cancel();
+      }
+      recognition?.start();
+    }
+    setIsRecording(!isRecording);
+  };
+
+  useEffect(() => {
+    if (!recognition) return;
+
+    let finalTranscript = '';
+    recognition.onresult = (event) => {
+      let interimTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        } else {
+          interimTranscript += event.results[i][0].transcript;
+        }
+      }
+      setQuestion(finalTranscript + interimTranscript);
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error', event.error);
+      setIsRecording(false);
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+      if (finalTranscript.trim()) {
+        askQuestion(finalTranscript);
+      }
+      finalTranscript = '';
+    };
+  }, []);
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -306,18 +422,26 @@ function App() {
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && askQuestion()}
-              placeholder="Ask me anything about KMRL documents..."
+              placeholder={isRecording ? 'Listening...' : 'Ask me anything...'}
               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               disabled={isLoading}
             />
             <button
-              onClick={askQuestion}
+              onClick={() => askQuestion()}
               disabled={!question.trim() || isLoading}
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <Send size={16} />
               Ask
             </button>
+            {recognition && (
+              <button
+                onClick={toggleRecording}
+                className={`p-3 rounded-lg transition-colors ${isRecording ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+              >
+                {isRecording ? <StopCircle size={20} /> : <Mic size={20} />}
+              </button>
+            )}
           </div>
         </div>
       </div>
