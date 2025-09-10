@@ -2,7 +2,7 @@ import { StringOutputParser } from '@langchain/core/output_parsers';
 import { RunnablePassthrough, RunnableSequence } from '@langchain/core/runnables';
 import { llm } from '../utils/llm.js';
 import { combineDocuments } from '../utils/combineDocuments.js';
-import { standaloneQuestionPrompt, answerPrompt, whyPrompt } from '../utils/prompts.js';
+import { standaloneQuestionPrompt, answerPrompt, whyPrompt, briefingPrompt } from '../utils/prompts.js';
 import { DocumentService } from './documentService.js';
 
 export class RAGService {
@@ -14,6 +14,7 @@ export class RAGService {
     this.standaloneQuestionChain = standaloneQuestionPrompt.pipe(llm).pipe(new StringOutputParser());
     this.answerChain = answerPrompt.pipe(llm).pipe(new StringOutputParser());
     this.whyChain = whyPrompt.pipe(llm).pipe(new StringOutputParser());
+    this.briefingChain = briefingPrompt.pipe(llm).pipe(new StringOutputParser());
   }
 
   async retrieve(question, k, role, filter = {}) {
@@ -68,7 +69,7 @@ export class RAGService {
       ).join('\n---\n');
 
       // Get the explanation from the LLM
-      const explanation = await this.whyChain.invoke({ question, snippets });
+      const explanation = await this.whyChain.invoke({ question, snippets, role });
 
       // Extract evidence from the original documents
       const evidence = docs.map(d => ({
@@ -81,6 +82,35 @@ export class RAGService {
     } catch (error) {
       console.error('RAGService.why error:', error);
       return { why: "Error generating explanation.", evidence: [] };
+    }
+  }
+
+  async brief({ question, role, filter = {}, k = 3 }) {
+    try {
+      const docs = await this.retrieve(question, k, role, filter);
+
+      if (!docs.length) {
+        return {
+          answer: "No new updates found.",
+          sources: [],
+        };
+      }
+
+      const context = combineDocuments(docs);
+      const answer = await this.briefingChain.invoke({ context, question });
+
+      const sources = docs.slice(0, Math.min(k, 3)).map(d => ({
+        source: d.metadata?.source ?? 'unknown',
+        page: d.metadata?.page ?? null
+      }));
+
+      return { answer, sources };
+    } catch (error) {
+      console.error('RAGService.brief error:', error);
+      return {
+        answer: "I encountered an error generating this briefing topic.",
+        sources: []
+      };
     }
   }
 }

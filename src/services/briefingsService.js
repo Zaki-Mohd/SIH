@@ -34,10 +34,33 @@ export async function makeBriefing({ role, rag = new RAGService() }) {
   
   for (const q of questions) {
     try {
-      const resp = await rag.ask({ question: q, role, k: 6 });
+      const resp = await rag.brief({ question: q, role, k: 3 });
+      
+      let formattedAnswer = resp.answer;
+      if (formattedAnswer && formattedAnswer !== 'No new updates found.') {
+        const items = formattedAnswer.split('*').map(p => p.trim()).filter(p => p.length > 0);
+        const newAnswer = [];
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].startsWith(':')) {
+            continue;
+          }
+          const title = items[i];
+          let description = '';
+          if (i + 1 < items.length && items[i + 1].startsWith(':')) {
+            description = items[i + 1].replace(/^:/, '').trim();
+          }
+          if (description) {
+            newAnswer.push(`* **${title}**: ${description}`);
+          } else {
+            newAnswer.push(`* **${title}**`);
+          }
+        }
+        formattedAnswer = newAnswer.join('\n');
+      }
+
       results.push({ 
         question: q, 
-        answer: resp.answer, 
+        answer: formattedAnswer, 
         sources: resp.sources 
       });
     } catch (error) {
