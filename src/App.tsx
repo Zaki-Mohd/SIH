@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageCircle, User, FileText, AlertCircle, HelpCircle, Send, Loader2, Mic, StopCircle } from 'lucide-react';
+import { MessageCircle, User, FileText, AlertCircle, HelpCircle, Send, Loader2, Mic, StopCircle, Volume2 } from 'lucide-react';
+import './index.css';
 
 // Role configuration with avatars and colors
 const ROLES = {
@@ -30,8 +31,8 @@ const INITIAL_MESSAGE: Message = {
   timestamp: new Date()
 };
 
-// Speech Recognition setup
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+// Speech Recognition setup (typed for browsers)
+const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 const recognition = SpeechRecognition ? new SpeechRecognition() : null;
 if (recognition) {
   recognition.continuous = true;
@@ -46,6 +47,8 @@ function App() {
   const [lastResult, setLastResult] = useState<LastResult | null>(null);
   const [showBriefings, setShowBriefings] = useState(false);
   const [briefings, setBriefings] = useState<any>(null);
+  const [showAlerts, setShowAlerts] = useState(false);
+  const [alerts, setAlerts] = useState<any>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -55,7 +58,7 @@ function App() {
     const loadVoices = () => {
       const availableVoices = window.speechSynthesis.getVoices();
       if (availableVoices.length > 0) {
-        console.log('Available voices:', availableVoices);
+        // console.log('Available voices:', availableVoices);
         setVoices(availableVoices);
       }
     };
@@ -72,9 +75,9 @@ function App() {
 
     // Simple language detection
     let lang = 'en-US';
-    if (/[\u0C00-\u0C7F]/.test(text)) { // Telugu
+    if (/[\u0C00-\u0C7F]/.test(text)) { // Telugu range
       lang = 'te-IN';
-    } else if (/[\u0C80-\u0CFF]/.test(text)) { // Kannada
+    } else if (/[\u0C80-\u0CFF]/.test(text)) { // Kannada range
       lang = 'kn-IN';
     }
 
@@ -85,11 +88,12 @@ function App() {
     } else if (lang === 'kn-IN') {
       selectedVoice = voices.find(voice => voice.lang === 'kn-IN') || null;
     } else {
-      // Prefer a female voice for English
-      selectedVoice = voices.find(voice => voice.lang.startsWith('en') && voice.name.includes('Female')) || voices.find(voice => voice.lang.startsWith('en')) || null;
+      // Prefer a female voice for English if available, otherwise first English voice
+      selectedVoice = voices.find(voice => voice.lang && voice.lang.startsWith('en') && voice.name && voice.name.toLowerCase().includes('female')) 
+        || voices.find(voice => voice.lang && voice.lang.startsWith('en')) || null;
     }
 
-    console.log('Detected language:', lang, 'Selected voice:', selectedVoice);
+    // console.log('Detected language:', lang, 'Selected voice:', selectedVoice);
 
     if (selectedVoice) {
       utterance.voice = selectedVoice;
@@ -165,7 +169,6 @@ function App() {
       };
 
       setMessages(prev => [...prev, aiMessage]);
-      speak(data.answer);
     } catch (error) {
       console.error('Error asking question:', error);
       const errorText = 'I encountered an error processing your question. Please try again.';
@@ -176,7 +179,6 @@ function App() {
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
-      speak(errorText);
     } finally {
       setIsLoading(false);
     }
@@ -211,7 +213,6 @@ function App() {
       };
 
       setMessages(prev => [...prev, whyMessage]);
-      speak(data.why);
     } catch (error) {
       console.error('Error getting explanation:', error);
       const errorText = 'I encountered an error getting the explanation. Please try again.';
@@ -222,7 +223,6 @@ function App() {
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
-      speak(errorText);
     } finally {
       setIsLoading(false);
     }
@@ -245,6 +245,23 @@ function App() {
     }
   };
 
+  const getAlerts = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/alerts?role=${selectedRole}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      setAlerts(data);
+      setShowAlerts(true);
+    } catch (error) {
+      console.error('Error getting alerts:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const toggleRecording = () => {
     if (isRecording) {
       recognition?.stop();
@@ -261,7 +278,7 @@ function App() {
     if (!recognition) return;
 
     let finalTranscript = '';
-    recognition.onresult = (event) => {
+    recognition.onresult = (event: any) => {
       let interimTranscript = '';
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
@@ -273,7 +290,7 @@ function App() {
       setQuestion(finalTranscript + interimTranscript);
     };
 
-    recognition.onerror = (event) => {
+    recognition.onerror = (event: any) => {
       console.error('Speech recognition error', event.error);
       setIsRecording(false);
     };
@@ -288,35 +305,106 @@ function App() {
   }, []);
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-dashboard relative overflow-hidden">
+      {/* SVG Metro Background (animated trains & tracks) */}
+      <svg className="absolute inset-0 w-full h-full pointer-events-none z-0" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+        <defs>
+          <linearGradient id="railGrad" x1="0" x2="1">
+            <stop offset="0" stopColor="rgba(0,224,255,0.08)" />
+            <stop offset="1" stopColor="rgba(155,92,255,0.06)" />
+          </linearGradient>
+          <linearGradient id="trainBody" x1="0" x2="1">
+            <stop offset="0" stopColor="#00e0ff" />
+            <stop offset="1" stopColor="#9b5cff" />
+          </linearGradient>
+          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+            <feMerge>
+              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+        </defs>
+
+        {/* Station silhouettes (subtle) */}
+        <g opacity="0.06" fill="#ffffff">
+          <rect x="20" y="60" width="220" height="18" rx="6"></rect>
+          <rect x="300" y="120" width="180" height="14" rx="6"></rect>
+          <rect x="760" y="40" width="260" height="20" rx="8"></rect>
+          <rect x="1200" y="110" width="260" height="16" rx="6"></rect>
+        </g>
+
+        {/* tracks - repeating lines */}
+        <g stroke="url(#railGrad)" strokeWidth="2" opacity="0.18" strokeLinecap="round">
+          {Array.from({length: 12}).map((_, i) => {
+            const y = 220 + i * 28;
+            return <line key={i} x1="0" x2="1600" y1={y} y2={y}></line>;
+          })}
+        </g>
+
+        {/* rails glow paths */}
+        <g opacity="0.08" stroke="#00e0ff" strokeWidth="1.6" strokeLinecap="round">
+          <path d="M-200 420 C 200 380, 400 460, 800 420 C 1200 380, 1400 460, 1800 420" strokeDasharray="8 60"></path>
+        </g>
+
+        {/* Animated train group - translate across screen */}
+        <g className={`train-runner ${isLoading ? 'train-fast' : ''}`} filter="url(#glow)">
+          {/* Wheels glow trails */}
+          <g transform="translate(0,0)">
+            {/* Simple stylized train (body + windows + lights) */}
+            <g transform="scale(1.15)">
+              <rect x="-120" y="380" width="260" height="64" rx="12" fill="url(#trainBody)"></rect>
+              <rect x="-92" y="398" width="44" height="28" rx="4" fill="#051220"></rect>
+              <rect x="-36" y="398" width="44" height="28" rx="4" fill="#051220"></rect>
+              <rect x="20" y="398" width="44" height="28" rx="4" fill="#051220"></rect>
+              <rect x="76" y="398" width="44" height="28" rx="4" fill="#051220"></rect>
+              {/* headlight */}
+              <circle cx="150" cy="412" r="10" fill="#fff7cc" opacity="0.9"></circle>
+              <ellipse cx="40" cy="452" rx="28" ry="6" fill="rgba(0,224,255,0.12)"></ellipse>
+            </g>
+          </g>
+
+          {/* faint trailing glow */}
+          <g opacity="0.35">
+            <ellipse cx="0" cy="460" rx="340" ry="22" fill="url(#trainBody)"></ellipse>
+          </g>
+        </g>
+
+        {/* station signboard (floating) */}
+        {/* <g transform="translate(1200,520)" opacity="0.08">
+          <rect x="0" y="0" rx="8" width="300" height="64" fill="#ffffff"></rect>
+          <text x="20" y="38" fill="#000000" fontSize="22" fontFamily="sans-serif">Central Control</text>
+        </g> */}
+      </svg>
+
       {/* Sidebar */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
-        <div className="p-6 border-b border-gray-200">
-          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <MessageCircle className="text-blue-600" />
+      <aside className="w-72 bg-glass neon-glow border-r border-gray-800 flex flex-col z-10">
+        <div className="p-6 border-b border-white/10">
+          <h1 className="text-2xl font-bold neon-text flex items-center gap-2">
+            <MessageCircle />
             Saarthi
           </h1>
-          <p className="text-sm text-gray-600 mt-1">KMRL Document Assistant</p>
+          <p className="text-sm text-gray-300 mt-1">KMRL Document Assistant</p>
         </div>
 
-        <div className="p-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-3">Select Your Role</h3>
-          <div className="space-y-2">
+        <div className="p-4 flex-1 overflow-y-auto">
+          <h3 className="text-sm font-medium text-gray-300 mb-3">Select Your Role</h3>
+          <div className="space-y-3">
             {Object.entries(ROLES).map(([role, config]) => (
               <button
                 key={role}
                 onClick={() => handleRoleChange(role as keyof typeof ROLES)}
-                className={`w-full p-3 rounded-lg text-left transition-all duration-200 hover:scale-105 ${
+                className={`w-full p-3 rounded-xl text-left transition-all duration-200 transform hover:scale-103 ${
                   selectedRole === role
-                    ? `${config.color} shadow-md border-2 border-current`
-                    : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                    ? 'role-selected'
+                    : 'bg-white/3 hover:bg-white/5'
                 }`}
               >
                 <div className="flex items-center gap-3">
                   <span className="text-2xl">{config.icon}</span>
                   <div>
-                    <div className="font-medium">{config.name}</div>
-                    <div className="text-xs opacity-75">{role}</div>
+                    <div className="font-medium text-white">{config.name}</div>
+                    <div className="text-xs opacity-60">{role}</div>
                   </div>
                 </div>
               </button>
@@ -324,70 +412,88 @@ function App() {
           </div>
         </div>
 
-        <div className="p-4 mt-auto border-t border-gray-200">
+        <div className="p-4 mt-auto border-t border-white/10">
           <button
             onClick={getBriefings}
             disabled={isLoading}
-            className="w-full p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 justify-center disabled:opacity-50"
+            className="w-full p-3 bg-gradient-to-r from-cyan-500 to-purple-600 text-white rounded-lg hover:opacity-95 transition-colors flex items-center gap-2 justify-center disabled:opacity-50"
           >
             <FileText size={18} />
             Daily Briefing
           </button>
+          <button
+            onClick={getAlerts}
+            disabled={isLoading}
+            className="w-full p-3 mt-2 bg-gradient-to-r from-cyan-500 to-purple-600 text-white rounded-lg hover:opacity-95 transition-colors flex items-center gap-2 justify-center disabled:opacity-50"
+          >
+            <AlertCircle size={18} />
+            ALERTS
+          </button>
         </div>
-      </div>
+      </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col z-10">
         {/* Header */}
-        <div className="bg-white border-b border-gray-200 p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">{ROLES[selectedRole].icon}</span>
-              <div>
-                <h2 className="font-semibold text-gray-900">{ROLES[selectedRole].name}</h2>
-                <p className="text-sm text-gray-600">Role-specific document access</p>
-              </div>
+        <div className="bg-glass border-b border-white/10 p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">{ROLES[selectedRole].icon}</span>
+            <div>
+              <h2 className="font-semibold text-lg text-white">{ROLES[selectedRole].name}</h2>
+              <p className="text-sm text-gray-300">Role-specific document access</p>
             </div>
-            
-            <div className="flex gap-2">
-              {lastResult && (
-                <button
-                  onClick={askWhy}
-                  disabled={isLoading}
-                  className="px-4 py-2 bg-yellow-100 text-yellow-800 rounded-lg hover:bg-yellow-200 transition-colors flex items-center gap-2 disabled:opacity-50"
-                >
-                  <HelpCircle size={16} />
-                  Why?
-                </button>
-              )}
-            </div>
+          </div>
+          
+          <div className="flex gap-2">
+            {lastResult && (
+              <button
+                onClick={askWhy}
+                disabled={isLoading}
+                className="px-4 py-2 bg-yellow-400/10 text-yellow-300 rounded-lg hover:bg-yellow-400/20 transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                <HelpCircle size={16} />
+                Why?
+              </button>
+            )}
           </div>
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <section className="flex-1 overflow-y-auto p-6 space-y-4 relative">
+          <div className="absolute inset-0 -z-10 opacity-0"></div>
+
           {messages.map((message) => (
             <div
               key={message.id}
               className={`flex ${message.from === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-2xl p-4 rounded-lg ${
+                className={`relative group max-w-2xl p-4 rounded-2xl ${
                   message.from === 'user'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white border border-gray-200 text-gray-900'
+                    ? 'bg-gradient-to-r from-cyan-500 to-purple-600 text-white shadow-neon'
+                    : 'bg-white/6 border border-white/6 text-gray-200'
                 }`}
               >
                 <div className="whitespace-pre-wrap">{message.text}</div>
                 
+                <button
+                  onClick={() => speak(message.text)}
+                  className={`absolute top-2 right-2 p-1 rounded-full bg-transparent text-transparent group-hover:text-current group-hover:bg-black/10 transition-all ${
+                    message.from === 'user' ? 'text-white' : 'text-gray-300'
+                  }`}
+                  aria-label="Speak message"
+                >
+                  <Volume2 size={16} />
+                </button>
+
                 {message.sources && message.sources.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-200">
-                    <div className="text-sm text-gray-600 mb-2">Sources:</div>
+                  <div className="mt-3 pt-3 border-t border-white/6">
+                    <div className="text-sm text-gray-300 mb-2">Sources:</div>
                     <div className="flex flex-wrap gap-2">
                       {message.sources.map((source, index) => (
                         <span
                           key={index}
-                          className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full"
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-white/6 text-gray-200 text-xs rounded-full"
                         >
                           <FileText size={12} />
                           {source.source?.split('/').pop() || 'Document'} p.{source.page}
@@ -403,19 +509,22 @@ function App() {
               </div>
             </div>
           ))}
-          
+
           {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-white border border-gray-200 p-4 rounded-lg flex items-center gap-2">
-                <Loader2 className="animate-spin" size={16} />
-                <span className="text-gray-600">Thinking...</span>
+            <div className="flex justify-start items-center gap-3">
+              <div className="p-3 rounded-full bg-white/6 animate-pulse">
+                {/* small indicator while train background moves faster */}
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <circle cx="12" cy="12" r="6" stroke="#00e0ff" strokeWidth="2" strokeOpacity="0.9" />
+                </svg>
               </div>
+              <div className="text-gray-300">Thinking... (train accelerating)</div>
             </div>
           )}
-        </div>
+        </section>
 
         {/* Input */}
-        <div className="bg-white border-t border-gray-200 p-4">
+        <div className="bg-glass border-t border-white/10 p-4">
           <div className="flex gap-2">
             <input
               type="text"
@@ -423,13 +532,13 @@ function App() {
               onChange={(e) => setQuestion(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && askQuestion()}
               placeholder={isRecording ? 'Listening...' : 'Ask me anything...'}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="flex-1 px-4 py-2 rounded-lg bg-black/50 border border-white/6 text-white focus:ring-2 focus:ring-cyan-400 outline-none"
               disabled={isLoading}
             />
             <button
               onClick={() => askQuestion()}
               disabled={!question.trim() || isLoading}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-6 py-2 bg-gradient-to-r from-cyan-500 to-purple-600 text-white rounded-lg hover:opacity-95 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <Send size={16} />
               Ask
@@ -437,35 +546,35 @@ function App() {
             {recognition && (
               <button
                 onClick={toggleRecording}
-                className={`p-3 rounded-lg transition-colors ${isRecording ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                className={`p-3 rounded-lg transition-colors ${isRecording ? 'bg-red-500 text-white' : 'bg-white/6 text-white hover:bg-white/10'}`}
               >
                 {isRecording ? <StopCircle size={20} /> : <Mic size={20} />}
               </button>
             )}
           </div>
         </div>
-      </div>
+      </main>
 
       {/* Briefings Modal */}
       {showBriefings && briefings && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg max-w-4xl max-h-[80vh] overflow-y-auto m-4">
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-xl font-semibold">Daily Briefing - {briefings.role}</h3>
-              <p className="text-gray-600">Generated: {new Date(briefings.generatedAt).toLocaleString()}</p>
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white/6 backdrop-blur-sm rounded-2xl max-w-4xl max-h-[80vh] overflow-y-auto border border-white/6">
+            <div className="p-6 border-b border-white/6">
+              <h3 className="text-xl font-semibold text-white">Daily Briefing - {briefings.role}</h3>
+              <p className="text-sm text-gray-300">Generated: {new Date(briefings.generatedAt).toLocaleString()}</p>
             </div>
             
             <div className="p-6 space-y-6">
               {briefings.items.map((item: any, index: number) => (
-                <div key={index} className="border border-gray-200 rounded-lg p-4">
-                  <h4 className="font-medium text-gray-900 mb-2">{item.question}</h4>
-                  <p className="text-gray-700 mb-3">{item.answer}</p>
+                <div key={index} className="border border-white/6 rounded-lg p-4 bg-white/4">
+                  <h4 className="font-medium text-white mb-2">{item.question}</h4>
+                  <p className="text-gray-300 mb-3">{item.answer}</p>
                   {item.sources && item.sources.length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {item.sources.map((source: any, idx: number) => (
                         <span
                           key={idx}
-                          className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full"
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-white/6 text-gray-200 text-xs rounded-full"
                         >
                           <FileText size={12} />
                           {source.source?.split('/').pop() || 'Document'} p.{source.page}
@@ -477,10 +586,53 @@ function App() {
               ))}
             </div>
             
-            <div className="p-6 border-t border-gray-200 flex justify-end">
+            <div className="p-6 border-t border-white/6 flex justify-end">
               <button
                 onClick={() => setShowBriefings(false)}
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-purple-600 text-white rounded-lg hover:opacity-95 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Alerts Modal */}
+      {showAlerts && alerts && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white/6 backdrop-blur-sm rounded-2xl max-w-4xl max-h-[80vh] overflow-y-auto border border-white/6">
+            <div className="p-6 border-b border-white/6">
+              <h3 className="text-xl font-semibold text-white">ALERTS - {alerts.role}</h3>
+              <p className="text-sm text-gray-300">Generated: {new Date(alerts.timestamp).toLocaleString()}</p>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              {alerts.alerts.map((item: any, index: number) => (
+                <div key={index} className="border border-white/6 rounded-lg p-4 bg-white/4">
+                  <h4 className="font-medium text-white mb-2">{item.query}</h4>
+                  <p className="text-gray-300 mb-3">{item.answer}</p>
+                  {item.sources && item.sources.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {item.sources.map((source: any, idx: number) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-white/6 text-gray-200 text-xs rounded-full"
+                        >
+                          <FileText size={12} />
+                          {source.source?.split('/').pop() || 'Document'} p.{source.page}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            
+            <div className="p-6 border-t border-white/6 flex justify-end">
+              <button
+                onClick={() => setShowAlerts(false)}
+                className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-purple-600 text-white rounded-lg hover:opacity-95 transition-colors"
               >
                 Close
               </button>

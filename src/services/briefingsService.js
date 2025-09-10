@@ -38,23 +38,21 @@ export async function makeBriefing({ role, rag = new RAGService() }) {
       
       let formattedAnswer = resp.answer;
       if (formattedAnswer && formattedAnswer !== 'No new updates found.') {
-        const items = formattedAnswer.split('*').map(p => p.trim()).filter(p => p.length > 0);
-        const newAnswer = [];
-        for (let i = 0; i < items.length; i++) {
-          if (items[i].startsWith(':')) {
-            continue;
-          }
-          const title = items[i];
-          let description = '';
-          if (i + 1 < items.length && items[i + 1].startsWith(':')) {
-            description = items[i + 1].replace(/^:/, '').trim();
-          }
-          if (description) {
-            newAnswer.push(`* **${title}**: ${description}`);
+        const lines = formattedAnswer.split('\n').filter(line => line.trim().startsWith('*'));
+        const newAnswer = lines.map(line => {
+          let content = line.trim().substring(1).trim();
+          content = content.replace(/\*\*/g, '');
+
+          const parts = content.split(':');
+          const title = parts[0].trim();
+          
+          if (parts.length > 1) {
+            const description = parts.slice(1).join(':').trim();
+            return `* **${title}**: ${description}`;
           } else {
-            newAnswer.push(`* **${title}**`);
+            return `* **${title}**`;
           }
-        }
+        });
         formattedAnswer = newAnswer.join('\n');
       }
 
