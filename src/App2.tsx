@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, User, FileText, AlertCircle, HelpCircle, Send, Loader2, Mic, StopCircle, Volume2 } from 'lucide-react';
 import './index.css';
-import Landing from './Landing.tsx'; // Corrected import path
 
 // Role configuration with avatars and colors
 const ROLES = {
@@ -41,7 +40,6 @@ if (recognition) {
 }
 
 function App() {
-  const [showLanding, setShowLanding] = useState(true); // State for landing page visibility
   const [selectedRole, setSelectedRole] = useState<keyof typeof ROLES>('Director');
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const [question, setQuestion] = useState('');
@@ -306,14 +304,6 @@ function App() {
     };
   }, []);
 
-  const handleEnterDashboard = () => {
-    setShowLanding(false);
-  };
-
-  if (showLanding) {
-    return <Landing onEnter={handleEnterDashboard} />;
-  }
-
   return (
     <div className="flex h-screen bg-dashboard relative overflow-hidden">
       {/* SVG Metro Background (animated trains & tracks) */}
@@ -390,7 +380,7 @@ function App() {
       {/* Sidebar */}
       <aside className="w-72 bg-glass neon-glow border-r border-gray-800 flex flex-col z-10">
         <div className="p-6 border-b border-white/10">
-          <h1 className="text-2xl font-bold sidebar-logo-text flex items-center gap-2">
+          <h1 className="text-2xl font-bold neon-text flex items-center gap-2">
             <MessageCircle />
             Saarthi
           </h1>
@@ -461,7 +451,7 @@ function App() {
                 disabled={isLoading}
                 className="px-4 py-2 bg-yellow-400/10 text-yellow-300 rounded-lg hover:bg-yellow-400/20 transition-colors flex items-center gap-2 disabled:opacity-50"
               >
-                <HelpCircle size={16} className="text-white" />
+                <HelpCircle size={16} />
                 Why?
               </button>
             )}

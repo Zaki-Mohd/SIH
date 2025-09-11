@@ -34,6 +34,16 @@
   text-shadow: 0 0 12px rgba(0,224,255,0.25), 0 0 20px rgba(155,92,255,0.12);
 }
 
+/* Sidebar logo text - specific style for the dashboard */
+.sidebar-logo-text {
+  font-size: 1.5rem; /* Adjusted size */
+  font-weight: bold;
+  background: var(--neon-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 8px rgba(0,224,255,0.2), 0 0 15px rgba(155,92,255,0.1);
+}
+
 /* Neon button style */
 button.neon-button, .neon-button {
   background: var(--neon-gradient);
